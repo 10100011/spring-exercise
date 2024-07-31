@@ -1,177 +1,68 @@
-## Goal
-Create a company search application using Spring Boot 3.1.3 or higher.
+# RiskNarrative Spring Exercise
 
-Expose an endpoint that uses the `TruProxyAPI` to do a company and officer lookup 
-via name or registration number.
+## Getting started
 
-## Criteria
-* The result of the search is returned as JSON
-* A request parameter has to be added to decide whether only active companies should be returned
-* The officers of each company have to be included in the company details (new field `officers`) 
-* Only include officers that are active (`resigned_on` is not present in that case)
-* Paging can be ignored
-* Please add unit tests and integrations tests, e.g. using WireMock to mock `TruProxyAPI` calls
+Add an environment variable named `X_API_KEY` containing your API key.
 
-**Expected Request**
+## Usage
 
-* The name and registration/company number are passed in via body
-* The API key is passed in via header `x-api-key`
-* If both fields are provided `companyNumber` is used
+Assuming a local URL on port 8080, POST a request to `http://localhost:8080/search?activeOnly=[true|false]`:
 
-<pre>
-{
-    "companyName" : "BBC LIMITED",
-    "companyNumber" : "06500244"
-}
-</pre>
+### By Company Name
+*Example*:
 
-**Expected Response**
+    {
+      "companyName" : "BBC"
+    }
+Returns 15 active or 20 active and inactive companies.
 
-* Not all fields that are returned from `TruProxyAPI` are required.
-The final JSON should look like this :
+### By Company Number
+*Example*:
+If both `companyName` and `companyNumber` are provided, `companyNumber` only is used and `companyName` is effectively ignored. These two requests are therefore effectively identical:
 
-<pre>
+    {
+      "companyName" : "BBC",
+      "companyNumber" : "06500244"
+    }
 
-{
-    "total_results": 1,
-    "items": [
-        {
-            "company_number": "06500244",
-            "company_type": "ltd",
-            "title": "BBC LIMITED",
-            "company_status": "active",
-            "date_of_creation": "2008-02-11",
-            "address": {
-                "locality": "Retford",
-                "postal_code": "DN22 0AD",
-                "premises": "Boswell Cottage Main Street",
-                "address_line_1": "North Leverton",
-                "country": "England"
-            },
-            "officers": [
-                {
-                    "name": "BOXALL, Sarah Victoria",
-                    "officer_role": "secretary",
-                    "appointed_on": "2008-02-11",
-                    "address": {
-                        "premises": "5",
-                        "locality": "London",
-                        "address_line_1": "Cranford Close",
-                        "country": "England",
-                        "postal_code": "SW20 0DP"
-                    }
-                }
-            ]
-        }
-    ]
-}
-</pre>
+    {
+      "companyNumber" : "06500244"
+    }
+Any request made by `companyNumber` will return either zero or one items (assuming that `companyNumber` is a primary key, which was implied but not definitively stated).
 
-## Bonus
-* Save the companies (by `company_number`) and its officers and addresses in a database 
-and return the result from there if the endpoint is called with `companyNumber`.
+### Database persistence
+This project uses the H2 in-memory database using a `CrudRepository`. Any Company that has previously been found by an API call, whether by `companyName` and `companyNumber`, will be persisted in the database alongside its corresponding Address, Officers, and Officers' Address.
 
- 
-## Example API Requests
+Making the following call to `http://localhost:8080/search?activeOnly=false` will store 20 Companies in the database:
 
-**Search for Company:**  
-`https://exercise.trunarrative.cloud/TruProxyAPI/rest/Companies/v1/Search?Query={search_term}`
+    {
+      "companyName" : "BBC"
+    }
+Making a second call, specifically by `companyName`, will initially check the database for the existence of a Company and attempt to return the Company, Officers, and Addresses from local storage. If the Company cannot be found in the database, an API call will be made and any results persisted for future use.
 
-<details>
-  <summary>Response Example</summary>
+    {
+      "companyNumber" : "06500244"
+    }
 
-  <pre>
-  {
-    "page_number": 1,
-    "kind": "search#companies",
-    "total_results": 20,
-    "items": [
-        {
-            "company_status": "active",
-            "address_snippet": "Boswell Cottage Main Street, North Leverton, Retford, England, DN22 0AD",
-            "date_of_creation": "2008-02-11",
-            "matches": {
-                "title": [
-                    1,
-                    3
-                ]
-            },
-            "description": "06500244 - Incorporated on 11 February 2008",
-            "links": {
-                "self": "/company/06500244"
-            },
-            "company_number": "06500244",
-            "title": "BBC LIMITED",
-            "company_type": "ltd",
-            "address": {
-                "premises": "Boswell Cottage Main Street",
-                "postal_code": "DN22 0AD",
-                "country": "England",
-                "locality": "Retford",
-                "address_line_1": "North Leverton"
-            },
-            "kind": "searchresults#company",
-            "description_identifier": [
-                "incorporated-on"
-            ]
-        }]
-  }
-  </pre>
-</details>
+```mermaid
+graph LR
+A[Check for Company in database] -- Found --> B(Load from DB)
+A -- Not found --> C(Call API) --> D(Store in DB)
+B --> E{Company returned}
+D --> E
+```
+The requirement was for persistence to be employed
 
-**Get Company Officers:**  
-`https://exercise.trunarrative.cloud/TruProxyAPI/rest/Companies/v1/Officers?CompanyNumber={number}`
-<details>
-  <summary>Response Example</summary>
+> "if the endpoint is called with `companyNumber`"
 
-  <pre>
-  {
-    "etag": "6dd2261e61776d79c2c50685145fac364e75e24e",
-    "links": {
-        "self": "/company/10241297/officers"
-    },
-    "kind": "officer-list",
-    "items_per_page": 35,
-    "items": [
-        {
-            "address": {
-                "premises": "The Leeming Building",
-                "postal_code": "LS2 7JF",
-                "country": "England",
-                "locality": "Leeds",
-                "address_line_1": "Vicar Lane"
-            },
-            "name": "ANTLES, Kerri",
-            "appointed_on": "2017-04-01",
-            "resigned_on": "2018-02-12",
-            "officer_role": "director",
-            "links": {
-                "officer": {
-                    "appointments": "/officers/4R8_9bZ44w0_cRlrxoC-wRwaMiE/appointments"
-                }
-            },
-            "date_of_birth": {
-                "month": 6,
-                "year": 1969
-            },
-            "occupation": "Finance And Accounting",
-            "country_of_residence": "United States",
-            "nationality": "American"
-        }]
-  }
-  </pre>
-</details>
+It would have been straightforward to store the results of specific queries by `companyName`; however such a feature may also have resulted in a bloated database, since even minor changes to the search term could have resulted in a frequent duplicates. A more efficient possibility, where a one Company is linked to many cached search terms, might also have been possible but beyond the scope of this exercise.
 
-## API documentation
+As this is an in-memory database, it is cleared each time the application is restarted. However, it would be trivial to switch persistence to a disk-based store.
 
-**Authentication:**\
-Use the API key provided in your request header when calling the endpoints. <br>
-Example: curl -s -H 'x-api-key: xxxxxxxxxxxxx' "https://exercise.trunarrative.cloud/TruProxyAPI/rest/Companies/v1/Officers?CompanyNumber=10241297"<br>
+## Assumptions
 
-*API credentials will be provided seperately*
+The brief stated that:
 
-## Do not check the API Key into the repository!
+> "A request parameter **has to be added** to decide whether only active companies should be returned"
 
-## Flow
-
-![Wireframe](https://raw.githubusercontent.com/TruNarrative/spring-exercise/main/spring_exercise.png)
+Therefore, the `activeOnly` parameter is obligatory and will not default to one or other option. Failure to include this will return a HTTP 400 error.
